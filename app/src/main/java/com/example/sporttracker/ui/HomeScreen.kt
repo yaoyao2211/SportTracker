@@ -9,7 +9,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.sporttracker.data.SportType
@@ -23,7 +22,6 @@ fun HomeScreen(
     onSportSelected: (SportType) -> Unit,
     onHistoryClick: () -> Unit
 ) {
-    // 获取当前日期
     val currentDate = SimpleDateFormat("yyyy年MM月dd日 EEEE", Locale.CHINA).format(Date())
 
     Scaffold(
