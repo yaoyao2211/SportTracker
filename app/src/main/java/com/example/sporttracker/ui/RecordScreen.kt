@@ -1,16 +1,21 @@
 package com.example.sporttracker.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.sporttracker.data.SportType
 import com.example.sporttracker.data.Workout
 import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -31,6 +36,7 @@ fun RecordScreen(
     }
 
     val startTime = remember { System.currentTimeMillis() }
+    val startDateStr = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA).format(Date(startTime)) }
 
     Scaffold(
         topBar = {
@@ -38,7 +44,8 @@ fun RecordScreen(
                 title = { Text(sport.displayName) },
                 navigationIcon = {
                     TextButton(onClick = onBack) { Text("返回") }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
             )
         }
     ) { padding ->
@@ -50,37 +57,68 @@ fun RecordScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
+            // 显示开始日期
             Text(
-                text = formatDuration(elapsedMillis),
-                fontSize = 64.sp,
-                style = MaterialTheme.typography.displayLarge
+                text = "开始时间：$startDateStr",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(modifier = Modifier.height(16.dp))
 
+            // 大号计时器
+            Text(
+                text = formatDuration(elapsedMillis),
+                fontSize = 72.sp,
+                style = MaterialTheme.typography.displayLarge,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+
             if (sport.isStrength) {
-                Text("已完成组数: $sets", fontSize = 20.sp)
-                Spacer(modifier = Modifier.height(8.dp))
-                Button(onClick = { sets++ }) {
-                    Text("完成一组")
+                Card(
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("已完成组数", style = MaterialTheme.typography.labelLarge)
+                        Text("$sets", fontSize = 36.sp, style = MaterialTheme.typography.displayMedium)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(onClick = { sets++ }, shape = RoundedCornerShape(8.dp)) {
+                            Text("+1 组")
+                        }
+                    }
                 }
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(24.dp))
             }
 
+            // 操作按钮
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Button(onClick = { isRunning = !isRunning }) {
-                    Text(if (isRunning) "暂停" else "开始")
+                Button(
+                    onClick = { isRunning = !isRunning },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f).height(56.dp)
+                ) {
+                    Text(if (isRunning) "暂停" else "开始", fontSize = 18.sp)
                 }
-                OutlinedButton(onClick = {
-                    isRunning = false
-                    elapsedMillis = 0
-                    sets = 0
-                }) {
-                    Text("重置")
+                OutlinedButton(
+                    onClick = {
+                        isRunning = false
+                        elapsedMillis = 0
+                        sets = 0
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f).height(56.dp)
+                ) {
+                    Text("重置", fontSize = 18.sp)
                 }
             }
 
             Spacer(modifier = Modifier.height(32.dp))
 
+            // 保存按钮
             Button(
                 onClick = {
                     val workout = Workout(
@@ -93,9 +131,12 @@ fun RecordScreen(
                     viewModel.saveWorkout(workout)
                     onBack()
                 },
-                enabled = elapsedMillis > 0
+                enabled = elapsedMillis > 0,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
             ) {
-                Text("保存记录")
+                Text("保存记录", fontSize = 18.sp)
             }
         }
     }
