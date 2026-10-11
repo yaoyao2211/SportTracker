@@ -81,7 +81,6 @@ fun RecordScreen(
         ) {
             Text("开始时间：$startDateStr", style = MaterialTheme.typography.bodyMedium)
             
-            // 地图显示区域 (仅跑步时显示)
             if (sport.needsGps) {
                 Box(modifier = Modifier.weight(1f).fillMaxWidth().padding(vertical = 8.dp)) {
                     MapDisplay(context, isRunning, trackPoints)
@@ -168,10 +167,8 @@ fun MapDisplay(
     isRunning: Boolean,
     trackPoints: MutableList<TrackPoint>
 ) {
-    // 1. 加载 osmdroid 配置 (修复了找不到 preference 的错误)
     Configuration.getInstance().load(context, context.getSharedPreferences("osmdroid", Context.MODE_PRIVATE))
 
-    // 2. 自定义高德在线地图源 (修复了 TileSourcePolicy 类型不匹配的错误)
     val gaodeSource = remember {
         object : OnlineTileSourceBase(
             "Gaode",
@@ -200,18 +197,29 @@ fun MapDisplay(
         }
     }
 
-    DisposableEffect(isRunning) {
-        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        val polyline = Polyline(mapView).apply {
+    // 地图只在组件销毁时释放，绝不受 isRunning 影响
+    DisposableEffect(Unit) {
+        onDispose { mapView.onDetach() }
+    }
+
+    val polyline = remember {
+        Polyline(mapView).apply {
             outlinePaint.color = android.graphics.Color.BLUE
             outlinePaint.strokeWidth = 10f
         }
-        mapView.overlays.add(polyline)
+    }
+
+    // 监听 isRunning 状态，开启/关闭定位
+    DisposableEffect(isRunning) {
+        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
 
         val locationListener = object : android.location.LocationListener {
             override fun onLocationChanged(location: Location) {
-                val geoPoint = GeoPoint(location.latitude, location.longitude)
-                trackPoints.add(TrackPoint(workoutId = 0, latitude = location.latitude, longitude = location.longitude, timestamp = System.currentTimeMillis()))
+                // 坐标转换 WGS-84 -> GCJ-02 (解决高德地图偏移问题)
+                val gcjPoint = wgs84ToGcj02(location.latitude, location.longitude)
+                val geoPoint = GeoPoint(gcjPoint.first, gcjPoint.second)
+                
+                trackPoints.add(TrackPoint(workoutId = 0, latitude = gcjPoint.first, longitude = gcjPoint.second, timestamp = System.currentTimeMillis()))
                 polyline.addPoint(geoPoint)
                 mapView.controller.animateTo(geoPoint)
                 mapView.invalidate()
@@ -222,16 +230,51 @@ fun MapDisplay(
         }
 
         if (isRunning) {
-            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 1f, locationListener)
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                if (polyline.outlinePaint != null) {
+                    mapView.overlays.add(polyline) // 确保线只加一次
+                }
+                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 1f, locationListener)
+            }
         }
 
         onDispose {
             locationManager.removeUpdates(locationListener)
-            mapView.onDetach()
         }
     }
 
     AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
+}
+
+// WGS-84 转 GCJ-02 坐标转换算法 (解决国内地图偏移)
+private fun wgs84ToGcj02(lat: Double, lon: Double): Pair<Double, Double> {
+    val a = 6378245.0
+    val ee = 0.00669342162296594323
+    var dLat = transformLat(lon - 105.0, lat - 35.0)
+    var dLon = transformLon(lon - 105.0, lat - 35.0)
+    val radLat = lat / 180.0 * Math.PI
+    var magic = Math.sin(radLat)
+    magic = 1 - ee * magic * magic
+    val sqrtMagic = Math.sqrt(magic)
+    dLat = (dLat * 180.0) / ((a * (1 - ee)) / (magic * sqrtMagic) * Math.PI)
+    dLon = (dLon * 180.0) / (a / sqrtMagic * Math.cos(radLat) * Math.PI)
+    return Pair(lat + dLat, lon + dLon)
+}
+
+private fun transformLat(x: Double, y: Double): Double {
+    var ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x))
+    ret += (20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0 / 3.0
+    ret += (20.0 * Math.sin(y * Math.PI) + 40.0 * Math.sin(y / 3.0 * Math.PI)) * 2.0 / 3.0
+    ret += (160.0 * Math.sin(y / 12.0 * Math.PI) + 320 * Math.sin(y * Math.PI / 30.0)) * 2.0 / 3.0
+    return ret
+}
+
+private fun transformLon(x: Double, y: Double): Double {
+    var ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x))
+    ret += (20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0 / 3.0
+    ret += (20.0 * Math.sin(x * Math.PI) + 40.0 * Math.sin(x / 3.0 * Math.PI)) * 2.0 / 3.0
+    ret += (150.0 * Math.sin(x / 12.0 * Math.PI) + 300.0 * Math.sin(x / 30.0 * Math.PI)) * 2.0 / 3.0
+    return ret
 }
 
 private fun formatDuration(millis: Long): String {
