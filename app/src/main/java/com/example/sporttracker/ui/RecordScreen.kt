@@ -26,7 +26,6 @@ import com.example.sporttracker.data.Workout
 import kotlinx.coroutines.delay
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
-import org.osmdroid.tileprovider.tilesource.TileSourcePolicy
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.util.MapTileIndex
 import org.osmdroid.views.MapView
@@ -169,9 +168,10 @@ fun MapDisplay(
     isRunning: Boolean,
     trackPoints: MutableList<TrackPoint>
 ) {
-    Configuration.getInstance().load(context, androidx.preference.PreferenceManager.getDefaultSharedPreferences(context))
+    // 1. 加载 osmdroid 配置 (修复了找不到 preference 的错误)
+    Configuration.getInstance().load(context, context.getSharedPreferences("osmdroid", Context.MODE_PRIVATE))
 
-    // 自定义高德在线地图源
+    // 2. 自定义高德在线地图源 (修复了 TileSourcePolicy 类型不匹配的错误)
     val gaodeSource = remember {
         object : OnlineTileSourceBase(
             "Gaode",
@@ -181,8 +181,7 @@ fun MapDisplay(
                 "https://webrd02.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x=",
                 "https://webrd03.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x=",
                 "https://webrd04.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x="
-            ),
-            TileSourcePolicy(0, 0)
+            )
         ) {
             override fun getTileURLString(pMapTileIndex: Long): String {
                 val x = MapTileIndex.getX(pMapTileIndex)
