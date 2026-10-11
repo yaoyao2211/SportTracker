@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationManager
-import android.os.Environment
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -26,12 +25,12 @@ import com.example.sporttracker.data.TrackPoint
 import com.example.sporttracker.data.Workout
 import kotlinx.coroutines.delay
 import org.osmdroid.config.Configuration
-import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
+import org.osmdroid.tileprovider.tilesource.TileSourcePolicy
 import org.osmdroid.util.GeoPoint
+import org.osmdroid.util.MapTileIndex
 import org.osmdroid.views.MapView
-import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -49,13 +48,10 @@ fun RecordScreen(
     var sets by remember { mutableStateOf(0) }
     val trackPoints = remember { mutableStateListOf<TrackPoint>() }
 
-    // 权限请求
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
-        if (isGranted) {
-            isRunning = true
-        }
+        if (isGranted) isRunning = true
     }
 
     LaunchedEffect(isRunning) {
@@ -86,14 +82,10 @@ fun RecordScreen(
         ) {
             Text("开始时间：$startDateStr", style = MaterialTheme.typography.bodyMedium)
             
-            // --- 地图显示区域 (仅跑步时显示) ---
+            // 地图显示区域 (仅跑步时显示)
             if (sport.needsGps) {
                 Box(modifier = Modifier.weight(1f).fillMaxWidth().padding(vertical = 8.dp)) {
-                    MapDisplay(
-                        context = context,
-                        isRunning = isRunning,
-                        trackPoints = trackPoints
-                    )
+                    MapDisplay(context, isRunning, trackPoints)
                 }
             } else {
                 Spacer(modifier = Modifier.weight(1f))
@@ -157,9 +149,7 @@ fun RecordScreen(
                         totalDurationMillis = elapsedMillis,
                         note = if (sport.isStrength) "组数: $sets" else null
                     )
-                    viewModel.saveWorkout(workout, trackPoints) {
-                        onBack()
-                    }
+                    viewModel.saveWorkout(workout, trackPoints) { onBack() }
                 },
                 enabled = elapsedMillis > 0,
                 shape = RoundedCornerShape(12.dp),
@@ -179,24 +169,38 @@ fun MapDisplay(
     isRunning: Boolean,
     trackPoints: MutableList<TrackPoint>
 ) {
-    // 初始化 osmdroid 配置
     Configuration.getInstance().load(context, androidx.preference.PreferenceManager.getDefaultSharedPreferences(context))
-    
-    // 设置离线地图路径（必须是手机外部存储的 Android/data/包名/files/ 目录）
-    val osmdroidBasePath = context.getExternalFilesDir(null)?.absolutePath + "/osmdroid"
-    val osmdroidTilePath = "$osmdroidBasePath/tiles"
-    Configuration.getInstance().osmdroidBasePath = File(osmdroidBasePath)
-    Configuration.getInstance().osmdroidTileCache = File(osmdroidTilePath)
+
+    // 自定义高德在线地图源
+    val gaodeSource = remember {
+        object : OnlineTileSourceBase(
+            "Gaode",
+            1, 19, 256, "",
+            arrayOf(
+                "https://webrd01.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x=",
+                "https://webrd02.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x=",
+                "https://webrd03.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x=",
+                "https://webrd04.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x="
+            ),
+            TileSourcePolicy(0, 0)
+        ) {
+            override fun getTileURLString(pMapTileIndex: Long): String {
+                val x = MapTileIndex.getX(pMapTileIndex)
+                val y = MapTileIndex.getY(pMapTileIndex)
+                val z = MapTileIndex.getZoom(pMapTileIndex)
+                return baseUrl + x + "&y=" + y + "&z=" + z
+            }
+        }
+    }
 
     val mapView = remember {
         MapView(context).apply {
-            setTileSource(TileSourceFactory.MAPNIK)
+            setTileSource(gaodeSource)
             setMultiTouchControls(true)
             controller.setZoom(18.0)
         }
     }
 
-    // 监听 GPS 位置并绘制轨迹
     DisposableEffect(isRunning) {
         val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
         val polyline = Polyline(mapView).apply {
@@ -228,10 +232,7 @@ fun MapDisplay(
         }
     }
 
-    AndroidView(
-        factory = { mapView },
-        modifier = Modifier.fillMaxSize()
-    )
+    AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
 }
 
 private fun formatDuration(millis: Long): String {
