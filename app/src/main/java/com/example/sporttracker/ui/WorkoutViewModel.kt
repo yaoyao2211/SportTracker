@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.sporttracker.data.AppDatabase
+import com.example.sporttracker.data.TrackPoint
 import com.example.sporttracker.data.Workout
 import com.example.sporttracker.data.WorkoutRepository
 import kotlinx.coroutines.flow.SharingStarted
@@ -16,8 +17,8 @@ class WorkoutViewModel(application: Application) : AndroidViewModel(application)
     val workouts: StateFlow<List<Workout>>
 
     init {
-        val dao = AppDatabase.getDatabase(application).workoutDao()
-        repository = WorkoutRepository(dao)
+        val db = AppDatabase.getDatabase(application)
+        repository = WorkoutRepository(db.workoutDao(), db.trackPointDao())
         workouts = repository.allWorkouts.stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(5000),
@@ -25,15 +26,13 @@ class WorkoutViewModel(application: Application) : AndroidViewModel(application)
         )
     }
 
-    fun saveWorkout(workout: Workout) {
+    fun saveWorkout(workout: Workout, points: List<TrackPoint>, onComplete: () -> Unit) {
         viewModelScope.launch {
-            repository.insert(workout)
-        }
-    }
-
-    fun deleteWorkout(workout: Workout) {
-        viewModelScope.launch {
-            repository.delete(workout)
+            val workoutId = repository.insertWorkout(workout)
+            // 将内存中的轨迹点绑定上 workoutId 并保存到数据库
+            val finalPoints = points.map { it.copy(workoutId = workoutId) }
+            repository.insertTrackPoints(finalPoints)
+            onComplete()
         }
     }
 }

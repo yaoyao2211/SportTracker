@@ -2,9 +2,10 @@ package com.example.sporttracker.data
 
 import kotlinx.coroutines.flow.Flow
 
-class WorkoutRepository(private val dao: WorkoutDao) {
-    val allWorkouts: Flow<List<Workout>> = dao.getAll()
+class WorkoutRepository(private val workoutDao: WorkoutDao, private val trackPointDao: TrackPointDao) {
+    val allWorkouts: Flow<List<Workout>> = workoutDao.getAll()
 
-    suspend fun insert(workout: Workout) = dao.insert(workout)
-    suspend fun delete(workout: Workout) = dao.delete(workout)
+    suspend fun insertWorkout(workout: Workout): Long = workoutDao.insert(workout)
+    suspend fun deleteWorkout(workout: Workout) = workoutDao.delete(workout)
+    suspend fun insertTrackPoints(points: List<TrackPoint>) = trackPointDao.insertAll(points)
 }
